@@ -97,5 +97,65 @@ public class DtStringUtilTest {
         Assert.assertEquals(DtStringUtil.getTableFullPath("aa", "aa.roc"), "\"aa\".\"roc\"");
     }
 
+    @Test
+    public void testConvertDataStructureToJson() {
+        // 测试空输入
+        Assert.assertEquals(DtStringUtil.convertDataStructureToJson(""), "{}");
+        Assert.assertEquals(DtStringUtil.convertDataStructureToJson(null), "{}");
+
+        // 测试简单对象转换
+        String simpleInput = "(name=test, value=123, empty=)";
+        String simpleJson = DtStringUtil.convertDataStructureToJson(simpleInput);
+        Assert.assertTrue(DtStringUtil.isJson(simpleJson));
+        Assert.assertTrue(simpleJson.contains("\"name\":\"test\""));
+        Assert.assertTrue(simpleJson.contains("\"value\":\"123\""));
+        Assert.assertTrue(simpleJson.contains("\"empty\":null"));
+
+        // 测试完整的FileInfo结构
+        String complexInput = "(uniscid=91110115WNRW1W8CG7, ywid=212028d73e404450884f3cb720184747, " +
+                "firstRegAcceNumber=测试数据受理号, productName=test优先数据, " +
+                "applicantName=北京一证通测试有限二公司, priorityReason=产品原因申请优先审批, " +
+                "remark=, contacts=张欢欢, contactPhoneNumber=13123212321, " +
+                "fileList=[FileInfo(fileName=379b4827-b102-4e97-87e3-3ae492b11db8.pdf, " +
+                "folderId=4692518625788739592, fileId=3d1fb4db5a9b40a2a15d3587aaff2226, " +
+                "fileType=0302_01, fileSize=84601), " +
+                "FileInfo(fileName=379b4827-b102-4e97-87e3-3ae492b11db8.pdf, " +
+                "folderId=4692518625788739592, fileId=a3f2017f67784e2e8d3099da358fbb3c, " +
+                "fileType=0302_02, fileSize=84601), " +
+                "FileInfo(fileName=379b4827-b102-4e97-87e3-3ae492b11db8.pdf, " +
+                "folderId=4692518625788739592, fileId=f028f706e3dd4e47bed03a23cc14e5fe, " +
+                "fileType=0302_06, fileSize=84601)], mainMechanism=test优先数据)";
+
+        String complexJson = DtStringUtil.convertDataStructureToJson(complexInput);
+        Assert.assertTrue(DtStringUtil.isJson(complexJson));
+        
+        // 验证主要字段存在
+        Assert.assertTrue(complexJson.contains("\"uniscid\":\"91110115WNRW1W8CG7\""));
+        Assert.assertTrue(complexJson.contains("\"ywid\":\"212028d73e404450884f3cb720184747\""));
+        Assert.assertTrue(complexJson.contains("\"firstRegAcceNumber\":\"测试数据受理号\""));
+        Assert.assertTrue(complexJson.contains("\"productName\":\"test优先数据\""));
+        Assert.assertTrue(complexJson.contains("\"applicantName\":\"北京一证通测试有限二公司\""));
+        Assert.assertTrue(complexJson.contains("\"priorityReason\":\"产品原因申请优先审批\""));
+        Assert.assertTrue(complexJson.contains("\"remark\":null"));
+        Assert.assertTrue(complexJson.contains("\"contacts\":\"张欢欢\""));
+        Assert.assertTrue(complexJson.contains("\"contactPhoneNumber\":\"13123212321\""));
+        Assert.assertTrue(complexJson.contains("\"mainMechanism\":\"test优先数据\""));
+        
+        // 验证fileList数组存在
+        Assert.assertTrue(complexJson.contains("\"fileList\":["));
+        Assert.assertTrue(complexJson.contains("\"fileName\":\"379b4827-b102-4e97-87e3-3ae492b11db8.pdf\""));
+        Assert.assertTrue(complexJson.contains("\"folderId\":4692518625788739592"));
+        Assert.assertTrue(complexJson.contains("\"fileSize\":84601"));
+        Assert.assertTrue(complexJson.contains("\"fileType\":\"0302_01\""));
+        Assert.assertTrue(complexJson.contains("\"fileType\":\"0302_02\""));
+        Assert.assertTrue(complexJson.contains("\"fileType\":\"0302_06\""));
+
+        // 测试空的fileList
+        String emptyFileListInput = "(name=test, fileList=[], value=123)";
+        String emptyFileListJson = DtStringUtil.convertDataStructureToJson(emptyFileListInput);
+        Assert.assertTrue(DtStringUtil.isJson(emptyFileListJson));
+        Assert.assertTrue(emptyFileListJson.contains("\"fileList\":[]"));
+    }
+
 
 }

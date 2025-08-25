@@ -30,6 +30,7 @@ import org.apache.flink.util.Preconditions;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -428,5 +429,225 @@ public class DtStringUtil {
      */
     public static boolean isEmptyOrNull(Object obj) {
         return Objects.isNull(obj) || obj.toString().isEmpty();
+    }
+
+    /**
+     * 将特定格式的数据结构字符串转换为JSON格式
+     * 支持解析包含FileInfo对象的复合数据结构
+     *
+     * @param dataStructureStr 待转换的数据结构字符串，格式如: (uniscid=value, ywid=value, fileList=[FileInfo(...), FileInfo(...)], ...)
+     * @return JSON格式字符串
+     */
+    public static String convertDataStructureToJson(String dataStructureStr) {
+        if (isEmptyOrNull(dataStructureStr)) {
+            return "{}";
+        }
+
+        try {
+            // 移除最外层的括号
+            String content = dataStructureStr.trim();
+            if (content.startsWith("(") && content.endsWith(")")) {
+                content = content.substring(1, content.length() - 1);
+            }
+
+            Map<String, Object> result = new HashMap<>();
+            List<String> fields = parseFields(content);
+
+            for (String field : fields) {
+                if (isEmptyOrNull(field)) {
+                    continue;
+                }
+
+                String[] keyValue = parseKeyValue(field);
+                if (keyValue.length == 2) {
+                    String key = keyValue[0].trim();
+                    String value = keyValue[1].trim();
+
+                    if (key.equals("fileList") && value.startsWith("[") && value.endsWith("]")) {
+                        // 处理fileList数组
+                        result.put(key, parseFileList(value));
+                    } else {
+                        // 处理普通字段，移除空值标记
+                        result.put(key, value.isEmpty() ? null : value);
+                    }
+                }
+            }
+
+            return objectMapper.writeValueAsString(result);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to convert data structure to JSON: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 解析字段列表，考虑嵌套的括号和方括号
+     */
+    private static List<String> parseFields(String content) {
+        List<String> fields = new ArrayList<>();
+        StringBuilder currentField = new StringBuilder();
+        int parenthesesCount = 0;
+        int bracketsCount = 0;
+        boolean inQuotes = false;
+
+        for (int i = 0; i < content.length(); i++) {
+            char c = content.charAt(i);
+
+            if (c == '"' && (i == 0 || content.charAt(i - 1) != '\\')) {
+                inQuotes = !inQuotes;
+                currentField.append(c);
+            } else if (!inQuotes) {
+                if (c == '(') {
+                    parenthesesCount++;
+                    currentField.append(c);
+                } else if (c == ')') {
+                    parenthesesCount--;
+                    currentField.append(c);
+                } else if (c == '[') {
+                    bracketsCount++;
+                    currentField.append(c);
+                } else if (c == ']') {
+                    bracketsCount--;
+                    currentField.append(c);
+                } else if (c == ',' && parenthesesCount == 0 && bracketsCount == 0) {
+                    // 找到字段分隔符
+                    fields.add(currentField.toString().trim());
+                    currentField = new StringBuilder();
+                } else {
+                    currentField.append(c);
+                }
+            } else {
+                currentField.append(c);
+            }
+        }
+
+        // 添加最后一个字段
+        if (currentField.length() > 0) {
+            fields.add(currentField.toString().trim());
+        }
+
+        return fields;
+    }
+
+    /**
+     * 解析键值对
+     */
+    private static String[] parseKeyValue(String field) {
+        int equalIndex = field.indexOf('=');
+        if (equalIndex > 0) {
+            String key = field.substring(0, equalIndex).trim();
+            String value = field.substring(equalIndex + 1).trim();
+            return new String[]{key, value};
+        }
+        return new String[]{field.trim(), ""};
+    }
+
+    /**
+     * 解析FileInfo列表
+     */
+    private static List<Map<String, Object>> parseFileList(String fileListStr) {
+        List<Map<String, Object>> fileList = new ArrayList<>();
+        
+        // 移除方括号
+        String content = fileListStr.substring(1, fileListStr.length() - 1).trim();
+        if (content.isEmpty()) {
+            return fileList;
+        }
+
+        List<String> fileInfoStrings = parseFileInfoItems(content);
+        
+        for (String fileInfoStr : fileInfoStrings) {
+            Map<String, Object> fileInfo = parseFileInfo(fileInfoStr);
+            if (!fileInfo.isEmpty()) {
+                fileList.add(fileInfo);
+            }
+        }
+
+        return fileList;
+    }
+
+    /**
+     * 解析FileInfo项目列表
+     */
+    private static List<String> parseFileInfoItems(String content) {
+        List<String> items = new ArrayList<>();
+        StringBuilder currentItem = new StringBuilder();
+        int parenthesesCount = 0;
+        boolean inQuotes = false;
+
+        for (int i = 0; i < content.length(); i++) {
+            char c = content.charAt(i);
+
+            if (c == '"' && (i == 0 || content.charAt(i - 1) != '\\')) {
+                inQuotes = !inQuotes;
+                currentItem.append(c);
+            } else if (!inQuotes) {
+                if (c == '(') {
+                    parenthesesCount++;
+                    currentItem.append(c);
+                } else if (c == ')') {
+                    parenthesesCount--;
+                    currentItem.append(c);
+                } else if (c == ',' && parenthesesCount == 0) {
+                    // 找到FileInfo分隔符
+                    String item = currentItem.toString().trim();
+                    if (!item.isEmpty()) {
+                        items.add(item);
+                    }
+                    currentItem = new StringBuilder();
+                } else {
+                    currentItem.append(c);
+                }
+            } else {
+                currentItem.append(c);
+            }
+        }
+
+        // 添加最后一个项目
+        if (currentItem.length() > 0) {
+            String item = currentItem.toString().trim();
+            if (!item.isEmpty()) {
+                items.add(item);
+            }
+        }
+
+        return items;
+    }
+
+    /**
+     * 解析单个FileInfo对象
+     */
+    private static Map<String, Object> parseFileInfo(String fileInfoStr) {
+        Map<String, Object> fileInfo = new HashMap<>();
+        
+        // 移除FileInfo()包装
+        String content = fileInfoStr.trim();
+        if (content.startsWith("FileInfo(") && content.endsWith(")")) {
+            content = content.substring(9, content.length() - 1);
+        }
+
+        List<String> fields = parseFields(content);
+        
+        for (String field : fields) {
+            if (!isEmptyOrNull(field)) {
+                String[] keyValue = parseKeyValue(field);
+                if (keyValue.length == 2) {
+                    String key = keyValue[0].trim();
+                    String value = keyValue[1].trim();
+                    
+                    // 尝试转换数值类型
+                    if (key.equals("folderId") || key.equals("fileSize")) {
+                        try {
+                            fileInfo.put(key, Long.parseLong(value));
+                        } catch (NumberFormatException e) {
+                            fileInfo.put(key, value);
+                        }
+                    } else {
+                        fileInfo.put(key, value.isEmpty() ? null : value);
+                    }
+                }
+            }
+        }
+
+        return fileInfo;
     }
 }
